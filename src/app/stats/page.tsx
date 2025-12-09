@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { CategoryId, PriceEntry } from "@/types/priceEntry";
 import {
@@ -33,6 +33,7 @@ export default function StatsPage() {
   const [entries, setEntries] = useState<PriceEntry[]>([]);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [categoryFilter, setCategoryFilter] =
     useState<CategoryId | "all">("all");
   const [scope, setScope] = useState<Scope>("mine");
@@ -44,6 +45,10 @@ export default function StatsPage() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [entryToDelete, setEntryToDelete] = useState<PriceEntry | null>(null);
+
+  // локални филтри по продукт и магазин
+  const [productFilter, setProductFilter] = useState("");
+  const [storeFilter, setStoreFilter] = useState("");
 
   // Зареждаме профила (за familyId)
   useEffect(() => {
@@ -63,7 +68,7 @@ export default function StatsPage() {
     fetchProfile();
   }, [user]);
 
-  // Зареждаме записите според обхвата
+  // Зареждаме записите според обхвата + филтъра по категория (отива към бекенда)
   useEffect(() => {
     const fetchEntries = async () => {
       if (!user) return;
@@ -148,6 +153,35 @@ export default function StatsPage() {
       ? `${window.location.origin}/family/join?familyId=${userProfile.familyId}`
       : "";
 
+  // Филтриране (по продукт / магазин) + сортиране по име на продукт (А–Я)
+  const filteredAndSortedEntries = useMemo(() => {
+    const productQ = productFilter.trim().toLowerCase();
+    const storeQ = storeFilter.trim().toLowerCase();
+
+    return [...entries]
+      .filter((entry) =>
+        productQ
+          ? entry.productName.toLowerCase().includes(productQ)
+          : true
+      )
+      .filter((entry) =>
+        storeQ ? (entry.store || "").toLowerCase().includes(storeQ) : true
+      )
+      .sort((a, b) => {
+        const nameA = (a.productName || "").trim();
+        const nameB = (b.productName || "").trim();
+
+        const byName = nameA.localeCompare(nameB, "bg", {
+          sensitivity: "base",
+        });
+
+        if (byName !== 0) return byName;
+
+        // вторичен критерий – по-нова дата първа
+        return b.date.getTime() - a.date.getTime();
+      });
+  }, [entries, productFilter, storeFilter]);
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-100 p-4">
@@ -172,17 +206,18 @@ export default function StatsPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-100 p-4">
       <div className="mx-auto w-full max-w-4xl rounded-xl bg-white p-6 shadow">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">Статистика</h1>
-            <p className="text-sm text-slate-600">
-              История на въведените цени.
-            </p>
-          </div>
+        {/* HEADER + FILTERS */}
+        <div className="mb-6 flex flex-col gap-4">
+          {/* Заглавие + обхват */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-xl font-semibold">Статистика</h1>
+              <p className="text-sm text-slate-600">
+                История на въведените цени.
+              </p>
+            </div>
 
-          <div className="flex flex-col gap-2 sm:items-center sm:gap-3">
-            {/* Обхват: Аз / Семейство / Всички */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <span className="text-xs font-medium text-slate-600">
                 Обхват:
               </span>
@@ -223,14 +258,17 @@ export default function StatsPage() {
                 Всички
               </button>
             </div>
+          </div>
 
-            {/* Филтър по категория */}
-            <div className="flex items-center gap-2">
+          {/* Филтри – втори ред */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            {/* Категория */}
+            <div className="flex flex-col gap-1">
               <label
-                className="text-sm text-slate-700"
+                className="text-sm font-medium text-slate-700"
                 htmlFor="categoryFilter"
               >
-                Категория:
+                Категория
               </label>
               <select
                 id="categoryFilter"
@@ -238,7 +276,7 @@ export default function StatsPage() {
                 onChange={(e) =>
                   setCategoryFilter(e.target.value as CategoryId | "all")
                 }
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               >
                 {CATEGORY_OPTIONS.map((c) => (
                   <option key={c.value} value={c.value}>
@@ -246,6 +284,42 @@ export default function StatsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Продукт */}
+            <div className="flex flex-col gap-1">
+              <label
+                className="text-sm font-medium text-slate-700"
+                htmlFor="productFilter"
+              >
+                Продукт
+              </label>
+              <input
+                id="productFilter"
+                type="text"
+                value={productFilter}
+                onChange={(e) => setProductFilter(e.target.value)}
+                placeholder="име на продукт"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            {/* Магазин */}
+            <div className="flex flex-col gap-1">
+              <label
+                className="text-sm font-medium text-slate-700"
+                htmlFor="storeFilter"
+              >
+                Магазин
+              </label>
+              <input
+                id="storeFilter"
+                type="text"
+                value={storeFilter}
+                onChange={(e) => setStoreFilter(e.target.value)}
+                placeholder="име на магазин"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
             </div>
           </div>
         </div>
@@ -282,15 +356,17 @@ export default function StatsPage() {
                   }}
                   className="mt-2 inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 sm:mt-0"
                 >
-                  {copied ? "Копирано ✓" : "Копирай линка"}
+                  {copied ? "Копирано!" : "Копирай линка"}
                 </button>
               </div>
             </div>
           ) : (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>
-                Все още нямаш семейна група. Създай една и покани семейството
-                си да си споделяте цените.
+                Нямаш семейна група още.{" "}
+                <span className="font-medium">
+                  Създай една и покани семейството си да си споделяте цените.
+                </span>
               </span>
               <button
                 type="button"
@@ -308,10 +384,10 @@ export default function StatsPage() {
 
         {isLoadingEntries ? (
           <p className="text-sm text-slate-600">Зареждане на записите…</p>
-        ) : entries.length === 0 ? (
+        ) : filteredAndSortedEntries.length === 0 ? (
           <p className="text-sm text-slate-600">
             Няма намерени записи{" "}
-            {categoryFilter !== "all" ? "за избраната категория" : ""}.
+            {categoryFilter !== "all" ? "за избраните филтри" : ""}.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -331,7 +407,7 @@ export default function StatsPage() {
                 </tr>
               </thead>
               <tbody>
-                {entries.map((entry) => (
+                {filteredAndSortedEntries.map((entry) => (
                   <tr key={entry.id} className="border-b last:border-0">
                     <td className="px-3 py-2">
                       {entry.date.toLocaleDateString("bg-BG")}

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { CategoryId, NewPriceEntryInput } from "@/types/priceEntry";
 import { addPriceEntry } from "@/lib/firebase/firestore";
@@ -25,6 +25,16 @@ type FormState = {
   note: string;
 };
 
+type LastEntryTemplate = {
+  category: CategoryId;
+  productName: string;
+  packageSize: string;
+  date: string;
+};
+
+const LOCAL_KEY_LAST_CATEGORY = "pricediary:lastCategory";
+const LOCAL_KEY_LAST_STORE = "pricediary:lastStore";
+
 const initialFormState = (): FormState => {
   const today = new Date();
   const yyyy = today.getFullYear();
@@ -48,23 +58,52 @@ export function PriceEntryForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastEntryTemplate, setLastEntryTemplate] =
+    useState<LastEntryTemplate | null>(null);
+
+  // При първо зареждане – използваме последна категория и магазин от localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const storedCategory = window.localStorage.getItem(LOCAL_KEY_LAST_CATEGORY);
+    const storedStore = window.localStorage.getItem(LOCAL_KEY_LAST_STORE);
+
+    const validCategoryValues = CATEGORY_OPTIONS.map((c) => c.value);
+    const isValidCategory =
+      storedCategory && validCategoryValues.includes(storedCategory as CategoryId);
+
+    setForm((prev) => ({
+      ...prev,
+      category: isValidCategory ? (storedCategory as CategoryId) : prev.category,
+      store: storedStore ?? prev.store,
+    }));
+  }, []);
 
   // Loading auth
   if (loading) {
-    return <p className="text-center text-sm text-slate-600">Зареждане…</p>;
+    return (
+      <p className="text-center text-sm text-slate-600">
+        Зареждане…
+      </p>
+    );
   }
 
   // No user logged in
   if (!user) {
     return (
       <p className="text-center text-sm text-red-600">
-        Трябва да влезеш в профила си. <a href="/auth/login" className="text-emerald-600 underline">Вход</a>
+        Трябва да влезеш в профила си.{" "}
+        <a href="/auth/login" className="text-emerald-600 underline">
+          Вход
+        </a>
       </p>
     );
   }
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
   ) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -99,17 +138,37 @@ export function PriceEntryForm() {
       store: form.store.trim(),
       price: priceNumber,
       date: dateObj,
-      note: form.note.trim(), // НИКОГА undefined
+      note: form.note.trim(), // винаги string
     };
+
+    // Запазваме шаблон за "още записи за този продукт"
+    const template: LastEntryTemplate = {
+      category: form.category,
+      productName: form.productName.trim(),
+      packageSize: form.packageSize.trim(),
+      date: form.date,
+    };
+    setLastEntryTemplate(template);
 
     try {
       setIsSubmitting(true);
       await addPriceEntry(user.uid, entryData);
 
+      // Запомняме последна категория и магазин
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LOCAL_KEY_LAST_CATEGORY, entryData.category);
+        if (entryData.store) {
+          window.localStorage.setItem(LOCAL_KEY_LAST_STORE, entryData.store);
+        }
+      }
+
       setSuccessMessage(
-        `Записано: ${entryData.productName} – ${entryData.price.toFixed(2)} лв (${entryData.store || "без магазин"})`
+        `Записано: ${entryData.productName} – ${entryData.price.toFixed(
+          2
+        )} лв (${entryData.store || "без магазин"})`
       );
 
+      // Нулираме формата, но запазваме категорията
       setForm((prev) => ({
         ...initialFormState(),
         category: prev.category,
@@ -120,6 +179,36 @@ export function PriceEntryForm() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Бърз бутон: още записи за същия продукт
+  const handleUseLastTemplate = () => {
+    if (!lastEntryTemplate) return;
+
+    setForm((prev) => ({
+      ...prev,
+      ...initialFormState(),
+      category: lastEntryTemplate.category,
+      productName: lastEntryTemplate.productName,
+      packageSize: lastEntryTemplate.packageSize,
+      date: lastEntryTemplate.date,
+      // store, price и note остават празни
+      store: "",
+      price: "",
+      note: "",
+    }));
+
+    setSuccessMessage(null);
+  };
+
+  // Нов продукт – изчистваме всичко, но пазим категорията
+  const handleNewProduct = () => {
+    setForm((prev) => ({
+      ...initialFormState(),
+      category: prev.category,
+    }));
+    setSuccessMessage(null);
+    setLastEntryTemplate(null);
   };
 
   return (
@@ -134,7 +223,9 @@ export function PriceEntryForm() {
           className="border rounded-md px-3 py-2"
         >
           {CATEGORY_OPTIONS.map((cat) => (
-            <option key={cat.value} value={cat.value}>{cat.label}</option>
+            <option key={cat.value} value={cat.value}>
+              {cat.label}
+            </option>
           ))}
         </select>
       </div>
@@ -214,9 +305,35 @@ export function PriceEntryForm() {
         />
       </div>
 
-      {/* Съобщения */}
-      {errorMessage && <p className="text-red-600 text-sm">{errorMessage}</p>}
-      {successMessage && <p className="text-emerald-600 text-sm">{successMessage}</p>}
+      {/* Съобщения + бързи бутони */}
+      {errorMessage && (
+        <p className="text-red-600 text-sm">{errorMessage}</p>
+      )}
+
+      {successMessage && (
+        <div className="space-y-2">
+          <p className="text-emerald-600 text-sm">{successMessage}</p>
+
+          {lastEntryTemplate && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleUseLastTemplate}
+                className="inline-flex items-center rounded-md border border-emerald-600 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+              >
+                + още за този продукт
+              </button>
+              <button
+                type="button"
+                onClick={handleNewProduct}
+                className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Нов продукт
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Бутон */}
       <button
