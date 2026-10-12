@@ -1,8 +1,15 @@
 import "./globals.css";
 import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import { AuthProvider } from "@/components/layout/AuthProvider";
 import { Navbar } from "@/components/layout/Navbar";
+
+const inter = Inter({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "PriceDiary",
@@ -15,33 +22,27 @@ export const metadata: Metadata = {
     ],
     apple: [
       { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
     ],
   },
 };
 
-// 🔵 Преместен themeColor от metadata → viewport (както изисква Next.js)
 export const viewport: Viewport = {
-  themeColor: "#059669",
+  themeColor: "#0284C7",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="bg">
+    <html lang="bg" className={inter.variable}>
       <head>
-        {/* Допълнителни линкове, които ти поиска */}
         <link rel="icon" href="/icons/icon-192x192.png" sizes="192x192" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </head>
-
-      <body className="min-h-screen bg-slate-50 text-slate-900">
+      <body className="min-h-screen bg-bg text-fg antialiased">
         <AuthProvider>
           <Navbar />
-          <div className="pt-4">{children}</div>
+          {children}
         </AuthProvider>
       </body>
     </html>
   );
 }
-
-

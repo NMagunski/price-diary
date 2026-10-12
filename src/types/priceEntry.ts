@@ -15,6 +15,8 @@ export interface PriceEntry {
   packageSize: string;
   store: string;
   price: number;
+  /** "EUR" за нови записи; липсващото поле = стар запис в BGN */
+  currency?: "EUR" | "BGN";
   date: Date;
   createdAt: Date | null;
   updatedAt: Date | null;

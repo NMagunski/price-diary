@@ -2,7 +2,73 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Тук после можем да добавим глобални стилове за PriceDiary */
-body {
-  @apply bg-slate-50 text-slate-900;
+/* ═══════════════════════════════════════════════════════
+   Design Tokens — Palette A "Clean Slate"
+   Switching to dark mode: add class="dark" on <html>
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  /* surfaces */
+  --color-bg:            #F8FAFC;   /* page background      */
+  --color-surface:       #FFFFFF;   /* card / input          */
+
+  /* typography */
+  --color-fg:            #0F172A;   /* primary text          */
+  --color-fg-secondary:  #64748B;   /* captions, labels      */
+
+  /* accent — sky blue */
+  --color-accent:        #0284C7;
+  --color-accent-hover:  #0369A1;
+  --color-accent-light:  #E0F2FE;   /* subtle accent bg      */
+
+  /* chrome */
+  --color-border:        #E2E8F0;   /* dividers, inputs      */
+  --color-muted:         #F1F5F9;   /* table header, tags    */
+  --color-muted-fg:      #94A3B8;   /* placeholder text      */
+
+  /* feedback */
+  --color-error:         #DC2626;
+  --color-error-light:   #FEF2F2;
+}
+
+/* ── Dark mode ────────────────────────────────────────── */
+.dark {
+  --color-bg:            #0F172A;
+  --color-surface:       #1E293B;
+  --color-fg:            #F1F5F9;
+  --color-fg-secondary:  #94A3B8;
+  --color-accent:        #38BDF8;
+  --color-accent-hover:  #0284C7;
+  --color-accent-light:  #082f49;
+  --color-border:        #334155;
+  --color-muted:         #1E293B;
+  --color-muted-fg:      #64748B;
+  --color-error:         #EF4444;
+  --color-error-light:   #450a0a;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    /* Inter OpenType features for clean numerals */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Consistent keyboard focus ring (accent color, no browser default) */
+  *:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  /* Prices and numbers — tabular alignment in columns */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
 }

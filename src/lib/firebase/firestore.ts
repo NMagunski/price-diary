@@ -61,28 +61,29 @@ export async function addPriceEntry(
     ...data,
     userId,
     productKey,
+    currency: "EUR",
     date: Timestamp.fromDate(data.date),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
   // 1) запис под потребителя
-  const userDocRef = await addDoc(userEntriesCollection(userId), baseData);
+  const newEntryRef = await addDoc(userEntriesCollection(userId), baseData);
 
   // 2) запис в глобалната колекция – пазим и userEntryId
   const globalDocRef = await addDoc(globalEntriesCollection, {
     ...baseData,
-    userEntryId: userDocRef.id,
+    userEntryId: newEntryRef.id,
   });
 
   // 3) връзка обратно към глобалния запис
   await setDoc(
-    userDocRef,
+    newEntryRef,
     { globalEntryId: globalDocRef.id },
     { merge: true }
   );
 
-  return userDocRef.id;
+  return newEntryRef.id;
 }
 /**
  * Изтрива запис на потребител + свързания глобален запис (ако има такъв).
@@ -265,6 +266,7 @@ function mapDocToPriceEntry(
     packageSize: data.packageSize ?? "",
     store: data.store ?? "",
     price: data.price ?? 0,
+    currency: (data.currency as "EUR" | "BGN") ?? undefined,
     date: dateField ? dateField.toDate() : new Date(0),
     createdAt: createdAtField ? createdAtField.toDate() : null,
     updatedAt: updatedAtField ? updatedAtField.toDate() : null,

@@ -1,8 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { registerWithEmail } from "@/lib/firebase/auth";
 import { useRouter } from "next/navigation";
+
+const inputCls =
+  "h-11 w-full rounded-lg border border-stroke bg-surface px-3 text-sm text-fg placeholder:text-muted-fg transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-sky-500/20";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,7 +27,7 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       await registerWithEmail(email, password);
-      router.push("/"); // към началната страница с формата
+      router.push("/");
     } catch (err: any) {
       console.error(err);
       setError(err?.message ?? "Грешка при регистрация.");
@@ -33,13 +37,14 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow">
-        <h1 className="mb-4 text-center text-2xl font-semibold">Регистрация</h1>
+    <main className="flex min-h-[calc(100dvh-56px)] items-center justify-center bg-bg px-4">
+      <div className="w-full max-w-sm rounded-xl border border-stroke bg-surface p-6 shadow-sm">
+        <h1 className="mb-1 text-xl font-semibold text-fg">Регистрация</h1>
+        <p className="mb-6 text-sm text-fg-2">Създай безплатен акаунт за секунди.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700" htmlFor="email">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-fg" htmlFor="email">
               Имейл
             </label>
             <input
@@ -49,12 +54,12 @@ export default function RegisterPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className={inputCls}
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700" htmlFor="password">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-fg" htmlFor="password">
               Парола
             </label>
             <input
@@ -64,26 +69,31 @@ export default function RegisterPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className={inputCls}
             />
+            <p className="text-xs text-muted-fg">Поне 6 символа.</p>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <div role="alert" className="rounded-lg bg-danger-l px-3 py-2.5 text-sm text-danger">
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex w-full items-center justify-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+            className="h-11 w-full rounded-lg bg-accent text-sm font-semibold text-white transition-colors duration-150 hover:bg-accent-h disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Регистриране..." : "Регистрирай се"}
+            {loading ? "Регистриране…" : "Регистрирай се"}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-slate-600">
+        <p className="mt-5 text-center text-sm text-fg-2">
           Вече имаш акаунт?{" "}
-          <a href="/auth/login" className="font-medium text-emerald-700 hover:underline">
+          <Link href="/auth/login" className="font-medium text-accent underline-offset-2 hover:underline">
             Вход
-          </a>
+          </Link>
         </p>
       </div>
     </main>

@@ -3,18 +3,16 @@ import { FamilyJoinClient } from "./FamilyJoinClient";
 
 export default function JoinFamilyPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-100 px-4 py-8">
-      <div className="mx-auto flex min-h-[60vh] w-full max-w-xl items-center justify-center">
-        <Suspense
-          fallback={
-            <div className="w-full max-w-md rounded-xl bg-white p-6 shadow">
-              <p className="text-sm text-slate-600">Зареждане…</p>
-            </div>
-          }
-        >
-          <FamilyJoinClient />
-        </Suspense>
-      </div>
+    <main className="flex min-h-[calc(100dvh-56px)] items-center justify-center bg-bg px-4">
+      <Suspense
+        fallback={
+          <div className="w-full max-w-sm rounded-xl border border-stroke bg-surface p-6 shadow-sm">
+            <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+          </div>
+        }
+      >
+        <FamilyJoinClient />
+      </Suspense>
     </main>
   );
 }

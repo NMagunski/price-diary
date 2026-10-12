@@ -14,6 +14,7 @@ import {
 import { UserProfile } from "@/types/user";
 import Link from "next/link";
 import { ConfirmDialog } from "@/components/common/confirmDialog";
+import { entryPrices, formatEur, formatBgn } from "@/lib/currency";
 
 const CATEGORY_OPTIONS: { value: CategoryId | "all"; label: string }[] = [
   { value: "all", label: "Всички категории" },
@@ -28,14 +29,22 @@ const CATEGORY_OPTIONS: { value: CategoryId | "all"; label: string }[] = [
 
 type Scope = "mine" | "family" | "all";
 
+const SCOPES: { value: Scope; label: string }[] = [
+  { value: "mine", label: "Само аз" },
+  { value: "family", label: "Моето семейство" },
+  { value: "all", label: "Всички" },
+];
+
+const inputCls =
+  "h-10 w-full rounded-lg border border-stroke bg-surface px-3 text-sm text-fg placeholder:text-muted-fg transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-sky-500/20";
+
 export default function StatsPage() {
   const { user, loading } = useAuth();
   const [entries, setEntries] = useState<PriceEntry[]>([]);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [categoryFilter, setCategoryFilter] =
-    useState<CategoryId | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryId | "all">("all");
   const [scope, setScope] = useState<Scope>("mine");
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -46,11 +55,9 @@ export default function StatsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [entryToDelete, setEntryToDelete] = useState<PriceEntry | null>(null);
 
-  // локални филтри по продукт и магазин
   const [productFilter, setProductFilter] = useState("");
   const [storeFilter, setStoreFilter] = useState("");
 
-  // Зареждаме профила (за familyId)
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user) return;
@@ -64,23 +71,18 @@ export default function StatsPage() {
         setProfileLoading(false);
       }
     };
-
     fetchProfile();
   }, [user]);
 
-  // Зареждаме записите според обхвата + филтъра по категория (отива към бекенда)
   useEffect(() => {
     const fetchEntries = async () => {
       if (!user) return;
       setIsLoadingEntries(true);
       setError(null);
-
       try {
         const categoryOption =
           categoryFilter === "all" ? undefined : { category: categoryFilter };
-
         let data: PriceEntry[] = [];
-
         if (scope === "mine") {
           data = await getPriceEntries(user.uid, categoryOption);
         } else if (scope === "family") {
@@ -88,7 +90,6 @@ export default function StatsPage() {
         } else {
           data = await getAllPriceEntries(categoryOption);
         }
-
         setEntries(data);
       } catch (err) {
         console.error(err);
@@ -97,7 +98,6 @@ export default function StatsPage() {
         setIsLoadingEntries(false);
       }
     };
-
     fetchEntries();
   }, [user, categoryFilter, scope]);
 
@@ -110,12 +110,7 @@ export default function StatsPage() {
       setUserProfile((prev) =>
         prev
           ? { ...prev, familyId }
-          : {
-              id: user.uid,
-              email: user.email ?? "",
-              familyId,
-              createdAt: null,
-            }
+          : { id: user.uid, email: user.email ?? "", familyId, createdAt: null }
       );
     } catch (err) {
       console.error(err);
@@ -125,16 +120,13 @@ export default function StatsPage() {
     }
   };
 
-  // отваряме модала за конкретния запис
   const handleAskDeleteEntry = (entry: PriceEntry) => {
     setError(null);
     setEntryToDelete(entry);
   };
 
-  // потвърждаваме и трием
   const handleConfirmDeleteEntry = async () => {
     if (!user || !entryToDelete) return;
-
     try {
       setDeletingId(entryToDelete.id);
       await deletePriceEntry(user.uid, entryToDelete.id);
@@ -142,7 +134,7 @@ export default function StatsPage() {
       setEntryToDelete(null);
     } catch (err) {
       console.error(err);
-      setError("Възникна грешка при изтриването на записа.");
+      setError("Грешка при изтриването на записа.");
     } finally {
       setDeletingId(null);
     }
@@ -153,49 +145,37 @@ export default function StatsPage() {
       ? `${window.location.origin}/family/join?familyId=${userProfile.familyId}`
       : "";
 
-  // Филтриране (по продукт / магазин) + сортиране по име на продукт (А–Я)
   const filteredAndSortedEntries = useMemo(() => {
     const productQ = productFilter.trim().toLowerCase();
     const storeQ = storeFilter.trim().toLowerCase();
-
     return [...entries]
-      .filter((entry) =>
-        productQ
-          ? entry.productName.toLowerCase().includes(productQ)
-          : true
-      )
-      .filter((entry) =>
-        storeQ ? (entry.store || "").toLowerCase().includes(storeQ) : true
-      )
+      .filter((e) => (productQ ? e.productName.toLowerCase().includes(productQ) : true))
+      .filter((e) => (storeQ ? (e.store || "").toLowerCase().includes(storeQ) : true))
       .sort((a, b) => {
-        const nameA = (a.productName || "").trim();
-        const nameB = (b.productName || "").trim();
-
-        const byName = nameA.localeCompare(nameB, "bg", {
-          sensitivity: "base",
-        });
-
-        if (byName !== 0) return byName;
-
-        // вторичен критерий – по-нова дата първа
-        return b.date.getTime() - a.date.getTime();
+        const byName = (a.productName || "").trim().localeCompare(
+          (b.productName || "").trim(),
+          "bg",
+          { sensitivity: "base" }
+        );
+        return byName !== 0 ? byName : b.date.getTime() - a.date.getTime();
       });
   }, [entries, productFilter, storeFilter]);
 
+  /* ── Loading / auth guards ── */
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-100 p-4">
-        <p className="text-sm text-slate-600">Зареждане…</p>
+      <main className="flex min-h-[calc(100dvh-56px)] items-center justify-center px-4">
+        <div className="h-4 w-24 animate-pulse rounded bg-muted" />
       </main>
     );
   }
 
   if (!user) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-100 p-4">
-        <p className="text-sm text-red-600">
+      <main className="flex min-h-[calc(100dvh-56px)] items-center justify-center px-4">
+        <p className="text-sm text-fg-2">
           Трябва да влезеш в профила си.{" "}
-          <a href="/auth/login" className="text-emerald-600 underline">
+          <a href="/auth/login" className="font-medium text-accent underline-offset-2 hover:underline">
             Вход
           </a>
         </p>
@@ -204,288 +184,264 @@ export default function StatsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-100 p-4">
-      <div className="mx-auto w-full max-w-4xl rounded-xl bg-white p-6 shadow">
-        {/* HEADER + FILTERS */}
-        <div className="mb-6 flex flex-col gap-4">
-          {/* Заглавие + обхват */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-xl font-semibold">Статистика</h1>
-              <p className="text-sm text-slate-600">
-                История на въведените цени.
-              </p>
-            </div>
+    <main className="min-h-[calc(100dvh-56px)] bg-bg px-4 py-8">
+      <div className="mx-auto w-full max-w-4xl">
 
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <span className="text-xs font-medium text-slate-600">
-                Обхват:
-              </span>
-              <button
-                type="button"
-                onClick={() => setScope("mine")}
-                className={[
-                  "rounded-full px-3 py-1 text-xs font-medium",
-                  scope === "mine"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200",
-                ].join(" ")}
-              >
-                Само аз
-              </button>
-              <button
-                type="button"
-                onClick={() => setScope("family")}
-                className={[
-                  "rounded-full px-3 py-1 text-xs font-medium",
-                  scope === "family"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200",
-                ].join(" ")}
-              >
-                Моето семейство
-              </button>
-              <button
-                type="button"
-                onClick={() => setScope("all")}
-                className={[
-                  "rounded-full px-3 py-1 text-xs font-medium",
-                  scope === "all"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200",
-                ].join(" ")}
-              >
-                Всички
-              </button>
-            </div>
-          </div>
-
-          {/* Филтри – втори ред */}
-          <div className="grid gap-3 sm:grid-cols-3">
-            {/* Категория */}
-            <div className="flex flex-col gap-1">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="categoryFilter"
-              >
-                Категория
-              </label>
-              <select
-                id="categoryFilter"
-                value={categoryFilter}
-                onChange={(e) =>
-                  setCategoryFilter(e.target.value as CategoryId | "all")
-                }
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                {CATEGORY_OPTIONS.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Продукт */}
-            <div className="flex flex-col gap-1">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="productFilter"
-              >
-                Продукт
-              </label>
-              <input
-                id="productFilter"
-                type="text"
-                value={productFilter}
-                onChange={(e) => setProductFilter(e.target.value)}
-                placeholder="име на продукт"
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
-
-            {/* Магазин */}
-            <div className="flex flex-col gap-1">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="storeFilter"
-              >
-                Магазин
-              </label>
-              <input
-                id="storeFilter"
-                type="text"
-                value={storeFilter}
-                onChange={(e) => setStoreFilter(e.target.value)}
-                placeholder="име на магазин"
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
-          </div>
+        {/* Page header */}
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-fg">Статистика</h1>
+          <p className="mt-1 text-sm text-fg-2">История на въведените цени.</p>
         </div>
 
-        {/* Секция "Семейство" */}
-        <div className="mb-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-          {profileLoading ? (
-            <span>Зареждане на семейна информация…</span>
-          ) : userProfile?.familyId ? (
-            <div className="flex flex-col gap-2">
-              <span className="font-medium text-slate-700">
-                Имаш активна семейна група.
-              </span>
-              <span>
-                Сподели този линк с членове на семейството, за да се
-                присъединят:
-              </span>
+        <div className="rounded-xl border border-stroke bg-surface shadow-sm">
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <code className="flex-1 break-all rounded border border-slate-200 bg-white px-2 py-1 text-[10px]">
-                  {inviteUrl || "Грешка при генериране на линк"}
-                </code>
+          {/* ── Controls ── */}
+          <div className="border-b border-stroke px-5 py-4 space-y-4">
+
+            {/* Scope pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-xs font-medium text-fg-2">Обхват:</span>
+              {SCOPES.map(({ value, label }) => (
                 <button
+                  key={value}
                   type="button"
-                  onClick={async () => {
-                    if (!inviteUrl) return;
-                    try {
-                      await navigator.clipboard.writeText(inviteUrl);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 1500);
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }}
-                  className="mt-2 inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 sm:mt-0"
+                  onClick={() => setScope(value)}
+                  className={[
+                    "rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150",
+                    scope === value
+                      ? "bg-accent text-white"
+                      : "bg-muted text-fg-2 hover:bg-stroke hover:text-fg",
+                  ].join(" ")}
                 >
-                  {copied ? "Копирано!" : "Копирай линка"}
+                  {label}
                 </button>
+              ))}
+            </div>
+
+            {/* Filters */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-fg-2" htmlFor="sf-cat">Категория</label>
+                <select
+                  id="sf-cat"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value as CategoryId | "all")}
+                  className={inputCls}
+                >
+                  {CATEGORY_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-fg-2" htmlFor="sf-product">Продукт</label>
+                <input
+                  id="sf-product"
+                  type="text"
+                  value={productFilter}
+                  onChange={(e) => setProductFilter(e.target.value)}
+                  placeholder="Търсене по продукт"
+                  className={inputCls}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-fg-2" htmlFor="sf-store">Магазин</label>
+                <input
+                  id="sf-store"
+                  type="text"
+                  value={storeFilter}
+                  onChange={(e) => setStoreFilter(e.target.value)}
+                  placeholder="Търсене по магазин"
+                  className={inputCls}
+                />
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <span>
-                Нямаш семейна група още.{" "}
-                <span className="font-medium">
-                  Създай една и покани семейството си да си споделяте цените.
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={handleCreateFamily}
-                disabled={familyCreating}
-                className="mt-2 inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 sm:mt-0"
-              >
-                {familyCreating ? "Създаване…" : "Създай семейство"}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-
-        {isLoadingEntries ? (
-          <p className="text-sm text-slate-600">Зареждане на записите…</p>
-        ) : filteredAndSortedEntries.length === 0 ? (
-          <p className="text-sm text-slate-600">
-            Няма намерени записи{" "}
-            {categoryFilter !== "all" ? "за избраните филтри" : ""}.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Дата</th>
-                  <th className="px-3 py-2">Категория</th>
-                  <th className="px-3 py-2">Продукт</th>
-                  <th className="px-3 py-2">Разфасовка</th>
-                  <th className="px-3 py-2">Магазин</th>
-                  {scope === "all" && (
-                    <th className="px-3 py-2 text-xs">Потребител</th>
-                  )}
-                  <th className="px-3 py-2 text-right">Цена</th>
-                  <th className="px-3 py-2 text-right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAndSortedEntries.map((entry) => (
-                  <tr key={entry.id} className="border-b last:border-0">
-                    <td className="px-3 py-2">
-                      {entry.date.toLocaleDateString("bg-BG")}
-                    </td>
-                    <td className="px-3 py-2">
-                      {
-                        CATEGORY_OPTIONS.find(
-                          (c) => c.value === entry.category
-                        )?.label
-                      }
-                    </td>
-                    <td className="px-3 py-2">
-                      <Link
-                        href={`/product/${encodeURIComponent(
-                          entry.productName.trim().toLowerCase()
-                        )}`}
-                        className="text-emerald-700 hover:underline"
-                      >
-                        {entry.productName}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2">{entry.packageSize}</td>
-                    <td className="px-3 py-2">{entry.store}</td>
-                    {scope === "all" && (
-                      <td className="px-3 py-2 text-xs text-slate-500">
-                        {entry.userId}
-                      </td>
-                    )}
-                    <td className="px-3 py-2 text-right">
-                      {entry.price.toFixed(2)} лв
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {entry.userId === user.uid && (
-                        <button
-                          type="button"
-                          onClick={() => handleAskDeleteEntry(entry)}
-                          disabled={deletingId === entry.id}
-                          className="text-xs text-red-600 hover:underline disabled:opacity-60"
-                        >
-                          {deletingId === entry.id ? "Триене..." : "Изтрий"}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
-        )}
 
-        <div className="mt-4 text-right">
-          <a
-            href="/"
-            className="text-sm font-medium text-emerald-700 hover:underline"
-          >
-            ← Обратно към въвеждане
-          </a>
+          {/* ── Family section ── */}
+          <div className="border-b border-stroke bg-muted/40 px-5 py-3 text-xs">
+            {profileLoading ? (
+              <div className="h-3 w-48 animate-pulse rounded bg-muted" />
+            ) : userProfile?.familyId ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="font-medium text-fg">Активна семейна група</span>
+                <div className="flex items-center gap-2">
+                  <code className="max-w-[240px] truncate rounded border border-stroke bg-surface px-2 py-1 text-[10px] text-fg-2">
+                    {inviteUrl || "—"}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!inviteUrl) return;
+                      try {
+                        await navigator.clipboard.writeText(inviteUrl);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }}
+                    className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent-h"
+                  >
+                    {copied ? "Копирано!" : "Копирай"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-fg-2">
+                  Нямаш семейна група.{" "}
+                  <span className="font-medium text-fg">Създай и покани семейството си.</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCreateFamily}
+                  disabled={familyCreating}
+                  className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent-h disabled:opacity-50"
+                >
+                  {familyCreating ? "Създаване…" : "Създай семейство"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Content ── */}
+          <div className="px-5 py-4">
+            {error && (
+              <div role="alert" className="mb-4 rounded-lg bg-danger-l px-3 py-2.5 text-sm text-danger">
+                {error}
+              </div>
+            )}
+
+            {/* Loading skeleton */}
+            {isLoadingEntries ? (
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="h-10 w-full animate-pulse rounded-lg bg-muted" />
+                ))}
+              </div>
+            ) : filteredAndSortedEntries.length === 0 ? (
+              /* Empty state */
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                  <svg className="h-6 w-6 text-muted-fg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-fg">Няма намерени записи</p>
+                  <p className="mt-1 text-xs text-fg-2">
+                    {categoryFilter !== "all" || productFilter || storeFilter
+                      ? "Опитай с различни филтри."
+                      : "Добави първия си продукт от началната страница."}
+                  </p>
+                </div>
+                {!productFilter && !storeFilter && categoryFilter === "all" && (
+                  <Link
+                    href="/"
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-h"
+                  >
+                    Въведи продукт
+                  </Link>
+                )}
+              </div>
+            ) : (
+              /* Table */
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm" aria-label="Записи на цени">
+                  <thead>
+                    <tr className="border-b border-stroke">
+                      <th className="pb-2 pr-4 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Дата</th>
+                      <th className="pb-2 pr-4 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Категория</th>
+                      <th className="pb-2 pr-4 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Продукт</th>
+                      <th className="pb-2 pr-4 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Разф.</th>
+                      <th className="pb-2 pr-4 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Магазин</th>
+                      {scope === "all" && (
+                        <th className="pb-2 pr-4 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Потребител</th>
+                      )}
+                      <th className="pb-2 pr-4 pt-1 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-fg">EUR</th>
+                      <th className="pb-2 pt-1 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-fg">BGN</th>
+                      <th className="pb-2 pt-1" aria-label="Действия" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stroke">
+                    {filteredAndSortedEntries.map((entry) => {
+                      const { eur, bgn } = entryPrices(entry.price, entry.currency);
+                      return (
+                        <tr
+                          key={entry.id}
+                          className="transition-colors hover:bg-muted/40"
+                        >
+                          <td className="py-2.5 pr-4 text-xs text-fg-2">
+                            {entry.date.toLocaleDateString("bg-BG")}
+                          </td>
+                          <td className="py-2.5 pr-4 text-xs text-fg-2">
+                            {CATEGORY_OPTIONS.find((c) => c.value === entry.category)?.label}
+                          </td>
+                          <td className="py-2.5 pr-4 text-sm">
+                            <Link
+                              href={`/product/${encodeURIComponent(entry.productName.trim().toLowerCase())}`}
+                              className="font-medium text-fg underline-offset-2 hover:text-accent hover:underline"
+                            >
+                              {entry.productName}
+                            </Link>
+                          </td>
+                          <td className="py-2.5 pr-4 text-xs text-fg-2">{entry.packageSize}</td>
+                          <td className="py-2.5 pr-4 text-xs text-fg-2">{entry.store}</td>
+                          {scope === "all" && (
+                            <td className="py-2.5 pr-4 max-w-[120px] truncate text-xs text-muted-fg">
+                              {entry.userId}
+                            </td>
+                          )}
+                          <td className="nums py-2.5 pr-4 text-right text-sm font-semibold text-fg">
+                            {formatEur(eur)}
+                          </td>
+                          <td className="nums py-2.5 text-right text-xs text-fg-2">
+                            {formatBgn(bgn)}
+                          </td>
+                          <td className="py-2.5 pl-3 text-right">
+                            {entry.userId === user.uid && (
+                              <button
+                                type="button"
+                                onClick={() => handleAskDeleteEntry(entry)}
+                                disabled={deletingId === entry.id}
+                                aria-label={`Изтрий ${entry.productName}`}
+                                className="rounded px-1.5 py-1 text-xs text-muted-fg transition-colors hover:bg-danger-l hover:text-danger disabled:opacity-50"
+                              >
+                                {deletingId === entry.id ? "…" : "Изтрий"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-stroke px-5 py-3">
+            <Link href="/" className="text-sm font-medium text-accent underline-offset-2 hover:underline">
+              ← Въведи нова цена
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Confirm delete dialog */}
       <ConfirmDialog
         open={!!entryToDelete}
         title="Изтриване на запис"
         description={
           entryToDelete
-            ? `Наистина ли искаш да изтриеш записа за „${entryToDelete.productName}“ от ${entryToDelete.date.toLocaleDateString(
-                "bg-BG"
-              )}?`
+            ? `Наистина ли искаш да изтриеш записа за „${entryToDelete.productName}" от ${entryToDelete.date.toLocaleDateString("bg-BG")}?`
             : ""
         }
         confirmLabel="Изтрий"
         cancelLabel="Откажи"
         loading={!!deletingId}
-        onCancel={() => {
-          if (deletingId) return; // докато трием, не затваряме
-          setEntryToDelete(null);
-        }}
+        onCancel={() => { if (deletingId) return; setEntryToDelete(null); }}
         onConfirm={handleConfirmDeleteEntry}
       />
     </main>

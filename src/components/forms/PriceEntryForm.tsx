@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { CategoryId, NewPriceEntryInput } from "@/types/priceEntry";
 import { addPriceEntry } from "@/lib/firebase/firestore";
+import { eurToBgn, formatEur, formatBgn } from "@/lib/currency";
 
 const CATEGORY_OPTIONS: { value: CategoryId; label: string }[] = [
   { value: "beer", label: "Бира" },
@@ -35,12 +36,16 @@ type LastEntryTemplate = {
 const LOCAL_KEY_LAST_CATEGORY = "pricediary:lastCategory";
 const LOCAL_KEY_LAST_STORE = "pricediary:lastStore";
 
+const inputCls =
+  "h-11 w-full rounded-lg border border-stroke bg-surface px-3 text-sm text-fg placeholder:text-muted-fg transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-sky-500/20";
+
+const labelCls = "text-sm font-medium text-fg";
+
 const initialFormState = (): FormState => {
   const today = new Date();
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, "0");
   const dd = String(today.getDate()).padStart(2, "0");
-
   return {
     category: "beer",
     productName: "",
@@ -61,17 +66,13 @@ export function PriceEntryForm() {
   const [lastEntryTemplate, setLastEntryTemplate] =
     useState<LastEntryTemplate | null>(null);
 
-  // При първо зареждане – използваме последна категория и магазин от localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const storedCategory = window.localStorage.getItem(LOCAL_KEY_LAST_CATEGORY);
     const storedStore = window.localStorage.getItem(LOCAL_KEY_LAST_STORE);
-
     const validCategoryValues = CATEGORY_OPTIONS.map((c) => c.value);
     const isValidCategory =
       storedCategory && validCategoryValues.includes(storedCategory as CategoryId);
-
     setForm((prev) => ({
       ...prev,
       category: isValidCategory ? (storedCategory as CategoryId) : prev.category,
@@ -79,21 +80,24 @@ export function PriceEntryForm() {
     }));
   }, []);
 
-  // Loading auth
   if (loading) {
     return (
-      <p className="text-center text-sm text-slate-600">
-        Зареждане…
-      </p>
+      <div className="space-y-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="space-y-1.5">
+            <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+            <div className="h-11 w-full animate-pulse rounded-lg bg-muted" />
+          </div>
+        ))}
+      </div>
     );
   }
 
-  // No user logged in
   if (!user) {
     return (
-      <p className="text-center text-sm text-red-600">
+      <p className="text-center text-sm text-fg-2">
         Трябва да влезеш в профила си.{" "}
-        <a href="/auth/login" className="text-emerald-600 underline">
+        <a href="/auth/login" className="font-medium text-accent underline-offset-2 hover:underline">
           Вход
         </a>
       </p>
@@ -101,9 +105,7 @@ export function PriceEntryForm() {
   }
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -119,12 +121,10 @@ export function PriceEntryForm() {
       setErrorMessage("Моля, въведи валидна цена.");
       return;
     }
-
     if (!form.productName.trim()) {
-      setErrorMessage("Моля, въведи име на продукта.");
+      setErrorMessage("Моля, въведи ime на продукта.");
       return;
     }
-
     const dateObj = new Date(form.date);
     if (Number.isNaN(dateObj.getTime())) {
       setErrorMessage("Невалидна дата.");
@@ -137,11 +137,11 @@ export function PriceEntryForm() {
       packageSize: form.packageSize.trim(),
       store: form.store.trim(),
       price: priceNumber,
+      currency: "EUR",
       date: dateObj,
-      note: form.note.trim(), // винаги string
+      note: form.note.trim(),
     };
 
-    // Запазваме шаблон за "още записи за този продукт"
     const template: LastEntryTemplate = {
       category: form.category,
       productName: form.productName.trim(),
@@ -154,7 +154,6 @@ export function PriceEntryForm() {
       setIsSubmitting(true);
       await addPriceEntry(user.uid, entryData);
 
-      // Запомняме последна категория и магазин
       if (typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_KEY_LAST_CATEGORY, entryData.category);
         if (entryData.store) {
@@ -163,12 +162,9 @@ export function PriceEntryForm() {
       }
 
       setSuccessMessage(
-        `Записано: ${entryData.productName} – ${entryData.price.toFixed(
-          2
-        )} лв (${entryData.store || "без магазин"})`
+        `Записано: ${entryData.productName} — ${formatEur(entryData.price)} (${formatBgn(eurToBgn(entryData.price))}) · ${entryData.store || "без магазин"}`
       );
 
-      // Нулираме формата, но запазваме категорията
       setForm((prev) => ({
         ...initialFormState(),
         category: prev.category,
@@ -181,10 +177,8 @@ export function PriceEntryForm() {
     }
   };
 
-  // Бърз бутон: още записи за същия продукт
   const handleUseLastTemplate = () => {
     if (!lastEntryTemplate) return;
-
     setForm((prev) => ({
       ...prev,
       ...initialFormState(),
@@ -192,141 +186,156 @@ export function PriceEntryForm() {
       productName: lastEntryTemplate.productName,
       packageSize: lastEntryTemplate.packageSize,
       date: lastEntryTemplate.date,
-      // store, price и note остават празни
       store: "",
       price: "",
       note: "",
     }));
-
     setSuccessMessage(null);
   };
 
-  // Нов продукт – изчистваме всичко, но пазим категорията
   const handleNewProduct = () => {
-    setForm((prev) => ({
-      ...initialFormState(),
-      category: prev.category,
-    }));
+    setForm((prev) => ({ ...initialFormState(), category: prev.category }));
     setSuccessMessage(null);
     setLastEntryTemplate(null);
   };
 
+  // Live BGN preview
+  const priceNum = Number(form.price.replace(",", "."));
+  const bgnPreview = !Number.isNaN(priceNum) && priceNum > 0
+    ? eurToBgn(priceNum)
+    : null;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {/* Категория */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium">Категория</label>
+      <div className="space-y-1.5">
+        <label className={labelCls} htmlFor="pd-category">Категория</label>
         <select
+          id="pd-category"
           name="category"
           value={form.category}
           onChange={handleChange}
-          className="border rounded-md px-3 py-2"
+          className={inputCls}
         >
           {CATEGORY_OPTIONS.map((cat) => (
-            <option key={cat.value} value={cat.value}>
-              {cat.label}
-            </option>
+            <option key={cat.value} value={cat.value}>{cat.label}</option>
           ))}
         </select>
       </div>
 
       {/* Продукт */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium">Продукт</label>
+      <div className="space-y-1.5">
+        <label className={labelCls} htmlFor="pd-product">Продукт</label>
         <input
+          id="pd-product"
           name="productName"
           value={form.productName}
           onChange={handleChange}
           placeholder="Хайникен"
-          className="border rounded-md px-3 py-2"
+          autoComplete="off"
+          className={inputCls}
         />
       </div>
 
       {/* Разфасовка */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium">Разфасовка</label>
+      <div className="space-y-1.5">
+        <label className={labelCls} htmlFor="pd-pkg">Разфасовка</label>
         <input
+          id="pd-pkg"
           name="packageSize"
           value={form.packageSize}
           onChange={handleChange}
           placeholder="500 мл кен"
-          className="border rounded-md px-3 py-2"
+          className={inputCls}
         />
       </div>
 
       {/* Магазин */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium">Магазин</label>
+      <div className="space-y-1.5">
+        <label className={labelCls} htmlFor="pd-store">Магазин</label>
         <input
+          id="pd-store"
           name="store"
           value={form.store}
           onChange={handleChange}
           placeholder="Фантастико"
-          className="border rounded-md px-3 py-2"
+          autoComplete="off"
+          className={inputCls}
         />
       </div>
 
-      {/* Цена + дата */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Цена (лв)</label>
+      {/* Цена + Дата */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label className={labelCls} htmlFor="pd-price">Цена (EUR)</label>
           <input
+            id="pd-price"
             name="price"
             value={form.price}
             onChange={handleChange}
-            placeholder="2.50"
+            placeholder="1.28"
             inputMode="decimal"
-            className="border rounded-md px-3 py-2"
+            className={[inputCls, "nums"].join(" ")}
           />
+          {bgnPreview !== null && (
+            <p className="nums text-xs text-fg-2">≈ {formatBgn(bgnPreview)}</p>
+          )}
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Дата</label>
+        <div className="space-y-1.5">
+          <label className={labelCls} htmlFor="pd-date">Дата</label>
           <input
+            id="pd-date"
             name="date"
             type="date"
             value={form.date}
             onChange={handleChange}
-            className="border rounded-md px-3 py-2"
+            className={inputCls}
           />
         </div>
       </div>
 
       {/* Бележка */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium">Бележка (по желание)</label>
+      <div className="space-y-1.5">
+        <label className={labelCls} htmlFor="pd-note">
+          Бележка{" "}
+          <span className="font-normal text-muted-fg">(по желание)</span>
+        </label>
         <textarea
+          id="pd-note"
           name="note"
           value={form.note}
           onChange={handleChange}
           rows={2}
-          placeholder="на промоция, клубна карта и т.н."
-          className="border rounded-md px-3 py-2"
+          placeholder="на промоция, клубна карта…"
+          className={[inputCls, "h-auto py-2.5 resize-none"].join(" ")}
         />
       </div>
 
-      {/* Съобщения + бързи бутони */}
+      {/* Error */}
       {errorMessage && (
-        <p className="text-red-600 text-sm">{errorMessage}</p>
+        <div role="alert" className="rounded-lg bg-danger-l px-3 py-2.5 text-sm text-danger">
+          {errorMessage}
+        </div>
       )}
 
+      {/* Success */}
       {successMessage && (
-        <div className="space-y-2">
-          <p className="text-emerald-600 text-sm">{successMessage}</p>
-
+        <div className="space-y-2 rounded-lg bg-accent-l px-3 py-2.5">
+          <p className="text-sm font-medium text-accent">{successMessage}</p>
           {lastEntryTemplate && (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleUseLastTemplate}
-                className="inline-flex items-center rounded-md border border-emerald-600 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                className="rounded-md border border-accent/30 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
               >
                 + още за този продукт
               </button>
               <button
                 type="button"
                 onClick={handleNewProduct}
-                className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-md border border-stroke px-3 py-1.5 text-xs font-medium text-fg-2 transition-colors hover:bg-muted hover:text-fg"
               >
                 Нов продукт
               </button>
@@ -335,11 +344,11 @@ export function PriceEntryForm() {
         </div>
       )}
 
-      {/* Бутон */}
+      {/* Submit */}
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full bg-emerald-600 text-white py-2 rounded-md hover:bg-emerald-700 transition disabled:opacity-60"
+        className="h-11 w-full rounded-lg bg-accent text-sm font-semibold text-white transition-colors duration-150 hover:bg-accent-h disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isSubmitting ? "Записване…" : "Запиши"}
       </button>
